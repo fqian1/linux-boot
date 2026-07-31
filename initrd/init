@@ -13,6 +13,8 @@ try_kexec() {
 	initrd=$2
 	cmdline=$3
 
+	echo "[INIT]: kernel: $kernel, initrd: $initrd, cmdline: $cmdline"
+
 	if [ -n "$initrd" ]; then 
 		kexec -l "$kernel" --initrd="$initrd" --command-line="$cmdline" || return 1
 	else 
@@ -35,7 +37,7 @@ boot_fs() {
 	root="$1"
 	fallback_cmdline="$2"
 
-	kernel=$(find "$root/boot" "$root" -maxdepth 2 \( -name 'vmlinuz*' -o -name 'bzImage*' -o -name 'linux*' \) 2>/dev/null | head -n 1 )
+	kernel=$(find "$root/boot" "$root" -maxdepth 2 \( -type f -o -type l \) \( -name 'vmlinuz*' -o -name 'bzImage*' -o -name 'linux*' \) 2>/dev/null | sort -V | head -n 1 )
 	[ -n "$kernel" ] || return 1
 	
 	initrd=$(find "$root/boot" "$root" -maxdepth 2 \( -name 'initrd*' -o -name 'initramfs*' \) 2>/dev/null | head -n 1 )
@@ -90,7 +92,7 @@ for blk in /sys/block/sd* /sys/block/mmcblk*; do
 		[ -b "$part" ] || continue
 		mount -o ro "$part" /mnt/usb 2>/dev/null || continue
 		
-		img=$(find /mnt/usb -maxdepth 2 -name '*.img' -o -name '*.IMG' 2>/dev/null | head -n 1)
+		img=$(find /mnt/usb -maxdepth 2 \( -name '*.img' -o -name '*.IMG' \) 2>/dev/null | head -n 1)
 
 		if [ -n "$img" ]; then
 		       boot_img "$img"
