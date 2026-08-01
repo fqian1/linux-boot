@@ -1,0 +1,5 @@
+NAME=Buildroot
+VERSION=-g849900b47-dirty
+ID=buildroot
+VERSION_ID=2026.05.1
+PRETTY_NAME="Buildroot 2026.05.1"

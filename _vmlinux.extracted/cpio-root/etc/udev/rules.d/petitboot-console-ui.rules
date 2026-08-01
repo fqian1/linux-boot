@@ -1,0 +1,1 @@
+SUBSYSTEM=="tty", KERNEL=="console", RUN+="/etc/init.d/pb-console start $name"
