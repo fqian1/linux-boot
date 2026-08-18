@@ -1,0 +1,91 @@
+#!/bin/sh
+
+PATH=/bin
+
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+mkdir -p /mnt/usb /mnt/disk
+
+is_usb() {
+	name=$(basename "$1")
+	case $(readlink -f /sys/block/"$name") in
+		*usb*) return 0 ;;
+	esac
+	return 1
+}
+
+find_kexec() {
+	root="$1"
+	cmdline="$2"
+
+	kernel=$(find "$root" -type f -maxdepth 2 \( -name "vmlinuz*" -o -name "bzImage*" \) | head -n1 )
+	[ -n "$kernel" ] || return 1
+
+	initrd=$(find "$root" -type f -maxdepth 2 \( -name "initrd*" -o -name "initramfs*" \) | head -n1 ) # for disks
+
+	echo "[   INIT   ]: kernel: $kernel"
+	echo "[   INIT   ]: cmdline: $cmdline"
+
+	if [ -n "$initrd" ] && [ -f "$initrd" ]; then
+		kexec -l "$kernel" --initrd="$initrd" --command-line="$cmdline" || { echo "[   INIT   ]: kexec -l failed"; return 1; }
+	else
+		kexec -l "$kernel" --command-line="$cmdline" || { echo "[   INIT   ]: kexec -l failed"; return 1; }
+	fi
+
+	sync
+	umount "$root"
+	kexec -e
+
+	echo "[   INIT   ]: kexec -e failed"
+	return 1
+}
+
+# main
+
+echo "[   INIT   ]: polling for usb devices"
+for i in $(seq 0 50); do
+	for dev in /dev/sd* /dev/mmcblk*; do
+		[ -b "$dev" ] || continue
+
+		if is_usb "$dev"; then
+			echo "[   INIT   ]: found usb device: $dev"
+			break 2
+		fi
+	done
+	usleep 100000
+done
+sleep 1
+
+for dev in /dev/sd* /dev/mmcblk*; do
+	is_usb "$dev" || continue
+
+	uuid=$(blkid "$dev" | awk -F'UUID="' '{print $2}' | awk -F'"' '{print $1}')
+	[ -z "$uuid" ] && continue
+
+	cmdline="root=UUID=$uuid console=tty0 rw rootdelay=10"
+
+	mount -o ro "$dev" /mnt/usb || continue
+	find_kexec /mnt/usb "$cmdline"
+	umount /mnt/usb
+done
+
+echo "[   INIT   ]: no bootable usb found, searching disk"
+
+for dev in /dev/sd* /dev/nvme*; do
+	is_usb "$dev" && continue
+
+	uuid=$(blkid "$dev" | awk -F'UUID="' '{print $2}' | awk -F'"' '{print $1}')
+	[ -z "$uuid" ] && continue
+
+	cmdline="root=UUID=$uuid console=tty0 ro"
+
+	mount -o ro "$dev" /mnt/disk || continue
+	find_kexec /mnt/disk "$cmdline"
+	umount /mnt/disk
+done
+
+echo "[   INIT   ]: no kernel found on disk either, starting shell"
+
+while true; do sh; done

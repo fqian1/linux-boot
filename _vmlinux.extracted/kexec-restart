@@ -1,8 +1,0 @@
-#!/bin/sh
-
-/bin/kill -QUIT 1
-
-while :
-do
-	sleep 1
-done
